@@ -29,7 +29,7 @@ For details on the iterative process, see
 # https://stackoverflow.com/questions/6076770/ignore-importerror-when-exec-source-code/6076819
 # https://stackoverflow.com/questions/11181519/whats-the-difference-between-builtin-and-builtins
 # https://stackoverflow.com/questions/9806963/how-to-use-the-import-function-to-import-a-name-from-a-submodule
-import __builtin__
+import builtins
 from types import ModuleType
 
 class DummyModule(ModuleType):
