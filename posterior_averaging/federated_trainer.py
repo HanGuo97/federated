@@ -61,7 +61,7 @@ def tryimport(name, globals=None, locals=None, fromlist=(), level=0) -> ModuleTy
 
 realimport, builtins.__import__ = builtins.__import__, tryimport
 
-
+import wandb
 from absl import app
 from absl import flags
 import tensorflow_federated as tff
@@ -159,6 +159,11 @@ def _write_hparam_flags():
 
 
 def main(argv):
+  wandb.init(
+    project="fedml",
+    sync_tensorboard=True,
+  )
+
   if len(argv) > 1:
     raise app.UsageError('Expected no command-line arguments, '
                          'got: {}'.format(argv))
