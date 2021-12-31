@@ -43,7 +43,7 @@ def tryimport(name, globals={}, locals={}, fromlist=[], level=-1):
     except ImportError:
         return DummyModule(name)
 
-realimport, __builtin__.__import__ = __builtin__.__import__, tryimport
+realimport, builtins.__import__ = builtins.__import__, tryimport
 
 
 from absl import app
