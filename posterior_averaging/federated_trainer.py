@@ -21,6 +21,31 @@ For details on the iterative process, see
 `posterior_inference/shared/fed_pa_schedule.py`.
 """
 
+# Unfortunately, `jax` is not supported on the servers we use, so we have
+# "ignore" this dependency. AFAIK, this is not a problem, since we don't use
+# `jax` for the experiments we consider. However, the code will import `jax`.
+# We can remove this dependency by using `tryimport` instead of `import`, which,
+# will create a dummy module that does nothing.
+# https://stackoverflow.com/questions/6076770/ignore-importerror-when-exec-source-code/6076819
+# https://stackoverflow.com/questions/11181519/whats-the-difference-between-builtin-and-builtins
+# https://stackoverflow.com/questions/9806963/how-to-use-the-import-function-to-import-a-name-from-a-submodule
+import __builtin__
+from types import ModuleType
+
+class DummyModule(ModuleType):
+    def __getattr__(self, key):
+        return None
+    __all__ = []   # support wildcard imports
+
+def tryimport(name, globals={}, locals={}, fromlist=[], level=-1):
+    try:
+        return realimport(name, globals, locals, fromlist, level)
+    except ImportError:
+        return DummyModule(name)
+
+realimport, __builtin__.__import__ = __builtin__.__import__, tryimport
+
+
 from absl import app
 from absl import flags
 import tensorflow_federated as tff
