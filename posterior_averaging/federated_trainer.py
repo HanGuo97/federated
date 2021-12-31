@@ -32,17 +32,32 @@ For details on the iterative process, see
 import builtins
 from types import ModuleType
 
+
 class DummyModule(ModuleType):
-    def __getattr__(self, key):
-        return None
-    __all__ = []   # support wildcard imports
+  def __getattr__(self, key):
+    # This is specific to this code. Specifically, at one point, we execute
+    # `from jax.lib import xla_client` and `xla_client.Client` is used for
+    # defining the type. Hence, we have to handle this corner case.
+    if key == "xla_client":
+      return DummyModule(key)
+    return None
+  __all__ = []   # support wildcard imports
 
 
 def tryimport(name, globals=None, locals=None, fromlist=(), level=0) -> ModuleType:
-    try:
-        return realimport(name, globals, locals, fromlist, level)
-    except ImportError:
-        return DummyModule(name)
+  if not any([
+      name == "jax",
+      name == "jax.lib",
+      (name == "tensorflow_federated" and
+      fromlist == ("experimental",))]):
+    return realimport(
+      name=name,
+      globals=globals,
+      locals=locals,
+      fromlist=fromlist,
+      level=level)
+  else:
+    return DummyModule(name)
 
 realimport, builtins.__import__ = builtins.__import__, tryimport
 
