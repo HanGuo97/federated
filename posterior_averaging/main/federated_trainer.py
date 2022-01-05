@@ -21,6 +21,48 @@ For details on the iterative process, see
 `posterior_inference/shared/fed_pa_schedule.py`.
 """
 
+
+# Unfortunately, `jax` is not supported on the servers we use, so we have
+# "ignore" this dependency. AFAIK, this is not a problem, since we don't use
+# `jax` for the experiments we consider. However, the code will import `jax`.
+# We can remove this dependency by using `tryimport` instead of `import`, which,
+# will create a dummy module that does nothing.
+# https://stackoverflow.com/questions/6076770/ignore-importerror-when-exec-source-code/6076819
+# https://stackoverflow.com/questions/11181519/whats-the-difference-between-builtin-and-builtins
+# https://stackoverflow.com/questions/9806963/how-to-use-the-import-function-to-import-a-name-from-a-submodule
+import builtins
+from types import ModuleType
+
+
+class DummyModule(ModuleType):
+  def __getattr__(self, key):
+    # This is specific to this code. Specifically, at one point, we execute
+    # `from jax.lib import xla_client` and `xla_client.Client` is used for
+    # defining the type. Hence, we have to handle this corner case.
+    if key == "xla_client":
+      return DummyModule(key)
+    return None
+  __all__ = []   # support wildcard imports
+
+
+def tryimport(name, globals=None, locals=None, fromlist=(), level=0) -> ModuleType:
+  if not any([
+      name == "jax",
+      name == "jax.lib",
+      (name == "tensorflow_federated" and
+       fromlist == ("experimental",))]):
+    return realimport(
+      name=name,
+      globals=globals,
+      locals=locals,
+      fromlist=fromlist,
+      level=level)
+  else:
+    return DummyModule(name)
+
+realimport, builtins.__import__ = builtins.__import__, tryimport
+
+import wandb
 import collections
 import os.path
 from typing import Callable
@@ -187,6 +229,11 @@ def _write_hparam_flags():
 
 
 def main(argv):
+  wandb.init(
+    project="fedml",
+    sync_tensorboard=True,
+  )
+
   if len(argv) > 1:
     raise app.UsageError('Expected no command-line arguments, '
                          'got: {}'.format(argv))
