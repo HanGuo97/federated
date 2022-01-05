@@ -49,6 +49,7 @@ def tryimport(name, globals=None, locals=None, fromlist=(), level=0) -> ModuleTy
   if not any([
       name == "jax",
       name == "jax.lib",
+      name == "jax.lib.xla_bridge",
       (name == "tensorflow_federated" and
        fromlist == ("experimental",))]):
     return realimport(
