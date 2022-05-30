@@ -93,11 +93,11 @@ def get_local_mnist_metrics(variables):
 
 @tff.federated_computation
 def aggregate_mnist_metrics_across_clients(metrics):
-  return {
+  return collections.OrderedDict({
       'num_examples': tff.federated_sum(metrics.num_examples),
       'loss': tff.federated_mean(metrics.loss, metrics.num_examples),
       'accuracy': tff.federated_mean(metrics.accuracy, metrics.num_examples)
-  }
+  })
 
 
 class MnistModel(tff.learning.Model):
@@ -142,14 +142,6 @@ class MnistModel(tff.learning.Model):
         num_examples=tf.shape(predictions)[0])
 
   @tf.function
-  def report_local_outputs(self):
-    return get_local_mnist_metrics(self._variables)
-
-  @property
-  def federated_output_computation(self):
-    return aggregate_mnist_metrics_across_clients
-
-  @tf.function
   def report_local_unfinalized_metrics(
       self) -> OrderedDict[str, List[tf.Tensor]]:
     """Creates an `OrderedDict` of metric names to unfinalized values."""
@@ -165,6 +157,15 @@ class MnistModel(tff.learning.Model):
         num_examples=tf.function(func=lambda x: x[0]),
         loss=tf.function(func=lambda x: x[0] / x[1]),
         accuracy=tf.function(func=lambda x: x[0] / x[1]))
+
+  @tf.function
+  def reset_metrics(self):
+    """Resets metrics variables to initial value."""
+    raise NotImplementedError(
+        'The `reset_metrics` method isn\'t implemented for your custom '
+        '`tff.learning.Model`. Please implement it before using this method. '
+        'You can leave this method unimplemented if you won\'t use this method.'
+    )
 
 
 def create_client_data():
@@ -269,12 +270,10 @@ class ServerTest(tf.test.TestCase):
 
   def _assert_server_update_with_all_ones(self, model_fn):
     optimizer_fn = lambda: tf.keras.optimizers.SGD(learning_rate=0.1)
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.InputLayer(input_shape=(784,)),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(units=10, kernel_initializer='zeros'),
-        tf.keras.layers.Softmax(),
-    ])
+    model = model_fn()
+    # Initialize the model weights with all zeros.
+    for var in model.trainable_variables:
+      var.assign(tf.zeros_like(var))
     optimizer = optimizer_fn()
     state, optimizer_vars = server_init(model, optimizer)
     weights_delta = tf.nest.map_structure(
@@ -312,7 +311,8 @@ class ClientTest(tf.test.TestCase):
       outputs = client_update(model, optimizer, client_data(), client_data(),
                               tf.constant(False),
                               attacked_fedavg._get_weights(model))
-      losses.append(outputs.model_output['loss'].numpy())
+      loss_finalizer = model.metric_finalizers()['loss']
+      losses.append(loss_finalizer(outputs.model_output['loss']))
 
     self.assertAllEqual(outputs.optimizer_output['num_examples'].numpy(), 2)
     self.assertLess(losses[1], losses[0])

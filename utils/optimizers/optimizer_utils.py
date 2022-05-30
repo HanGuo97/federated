@@ -20,7 +20,6 @@ from typing import Any, Callable, Dict, List, Optional
 from absl import flags
 from absl import logging
 import tensorflow as tf
-import tensorflow_addons.optimizers as tfao
 
 from utils.optimizers import lars
 from utils.optimizers import shampoo
@@ -39,7 +38,6 @@ _SUPPORTED_OPTIMIZERS_CLS = [
     tf.keras.optimizers.Adam,
     yogi.Yogi,
     lars.LARS,
-    tfao.lamb.LAMB,
     shampoo.Shampoo,
 ]
 
@@ -206,9 +204,9 @@ def remove_unused_flags(prefix: str,
 
   def _is_used_flag(flag_name):
     # We filter by whether the flag contains an unused optimizer prefix.
-    # This retains any flag not of the form <prefix>_<optimizer>_*.
+    # This automatically retains any flag not of the form <prefix>_<optimizer>*.
     for unused_flag_prefix in unused_optimizer_flag_prefixes:
-      if flag_name.startswith(f'{unused_flag_prefix}_'):
+      if flag_name.startswith(unused_flag_prefix):
         return False
     return True
 
@@ -288,7 +286,7 @@ def create_optimizer_fn_from_flags(
       continue
     # Otherwise the flag has a value set by the user.
     for unused_prefix in unused_flag_prefixes:
-      if flag_name.startswith(f'{unused_prefix}_'):
+      if flag_name.startswith(unused_prefix):
         mistakenly_set_flags.append(flag_name)
         break
   if mistakenly_set_flags:
@@ -311,7 +309,7 @@ def create_optimizer_fn_from_flags(
   prefix_len = len(flag_prefix) + 1
   kwargs = {}
   for flag_name in flags.FLAGS:
-    if not flag_name.startswith(f'{flag_prefix}_'):
+    if not flag_name.startswith(flag_prefix):
       continue
     arg_name = flag_name[prefix_len:]
     kwargs[arg_name] = flags.FLAGS[flag_name].value
@@ -407,6 +405,7 @@ def warmup_and_decay_schedule_builder(base_value, warmup_steps, decay_fn):
   else:
 
     def warmup_and_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       warmedup_value = base_value * (round_num + 1) / warmup_steps
       return tf.cond(
           tf.less(round_num, warmup_steps), lambda: warmedup_value,
@@ -433,9 +432,11 @@ def exp_decay_schedule_builder(base_value, decay_steps, decay_rate, staircase):
   """
   if staircase:
     def exp_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value * tf.pow(decay_rate, round_num // decay_steps)
   else:
     def exp_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value * tf.pow(decay_rate, round_num / decay_steps)
 
   return exp_decay_fn
@@ -458,9 +459,11 @@ def inv_lin_schedule_builder(base_value, decay_steps, decay_rate, staircase):
   """
   if staircase:
     def inv_lin_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value / (1.0 + decay_rate * (round_num // decay_steps))
   else:
     def inv_lin_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value / (1.0 + decay_rate * (round_num / decay_steps))
 
   return inv_lin_decay_fn
@@ -483,9 +486,11 @@ def inv_sqrt_schedule_builder(base_value, decay_steps, decay_rate, staircase):
   """
   if staircase:
     def inv_sqrt_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value / tf.sqrt(1.0 + decay_rate * (round_num // decay_steps))
   else:
     def inv_sqrt_decay_fn(round_num):
+      round_num = tf.cast(round_num, tf.float32)
       return base_value / tf.sqrt(1.0 + decay_rate * (round_num / decay_steps))
 
   return inv_sqrt_decay_fn

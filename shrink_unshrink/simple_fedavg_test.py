@@ -123,21 +123,6 @@ def _mnist_forward_pass(variables, batch):
       loss=loss, predictions=predictions, num_examples=num_examples)
 
 
-def _get_local_mnist_metrics(variables):
-  return collections.OrderedDict(
-      num_examples=variables.num_examples,
-      loss=variables.loss_sum / variables.num_examples,
-      accuracy=variables.accuracy_sum / variables.num_examples)
-
-
-@tff.federated_computation
-def _aggregate_mnist_metrics_across_clients(metrics):
-  return collections.OrderedDict(
-      num_examples=tff.federated_sum(metrics.num_examples),
-      loss=tff.federated_mean(metrics.loss, metrics.num_examples),
-      accuracy=tff.federated_mean(metrics.accuracy, metrics.num_examples))
-
-
 class MnistModel(tff.learning.Model):
 
   def __init__(self):
@@ -181,14 +166,6 @@ class MnistModel(tff.learning.Model):
     return _mnist_forward_pass(self._variables, batch)
 
   @tf.function
-  def report_local_outputs(self):
-    return _get_local_mnist_metrics(self._variables)
-
-  @property
-  def federated_output_computation(self):
-    return _aggregate_mnist_metrics_across_clients
-
-  @tf.function
   def report_local_unfinalized_metrics(
       self) -> OrderedDict[str, List[tf.Tensor]]:
     """Creates an `OrderedDict` of metric names to unfinalized values."""
@@ -204,6 +181,15 @@ class MnistModel(tff.learning.Model):
         num_examples=tf.function(func=lambda x: x[0]),
         loss=tf.function(func=lambda x: x[0] / x[1]),
         accuracy=tf.function(func=lambda x: x[0] / x[1]))
+
+  @tf.function
+  def reset_metrics(self):
+    """Resets metrics variables to initial value."""
+    raise NotImplementedError(
+        'The `reset_metrics` method isn\'t implemented for your custom '
+        '`tff.learning.Model`. Please implement it before using this method. '
+        'You can leave this method unimplemented if you won\'t use this method.'
+    )
 
 
 def _create_client_data():
@@ -371,7 +357,8 @@ class ClientTest(tf.test.TestCase):
           model_weights=model.weights, round_num=r)
       outputs = simple_fedavg_tf.client_update(model, client_data(),
                                                server_message, optimizer)
-      losses.append(outputs.model_output['loss'])
+      loss_finalizer = model.metric_finalizers()['loss']
+      losses.append(loss_finalizer(outputs.model_output['loss']))
 
     self.assertAllEqual(int(outputs.client_weight.numpy()), 2)
     self.assertLess(losses[1], losses[0])

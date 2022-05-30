@@ -13,13 +13,13 @@
 # limitations under the License.
 """Utility functions and classes for logging hyperparameters and metrics."""
 
+import asyncio
 import collections
 import os
 import time
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Tuple
 
 from absl import logging
-from clu import metric_writers
 import pandas as pd
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -98,25 +98,17 @@ class EpochTimerCallback(tf.keras.callbacks.Callback):
     logs[EPOCH_TIME_KEY] = elapsed_time
 
 
-class MetricWriterManager(tff.simulation.MetricsManager):
-  """A `tff.simulation.MetricsManager` that wraps a `MetricWriter` instance."""
-
-  def __init__(self, metric_writer: metric_writers.MetricWriter):
-    self._writer = metric_writer
-
-  def save_metrics(self, metrics: Mapping[str, Any], round_num: int):
-    self._writer.write_scalars(
-        step=round_num, scalars=_flatten_nested_dict(metrics))
-
-
 class MetricWriterCallback(tf.keras.callbacks.Callback):
   """A keras callback that wraps a clu `MetricWriter` instance."""
 
-  def __init__(self, metric_writer: metric_writers.MetricWriter):
-    self._writer = metric_writer
+  def __init__(self, summary_dir: str):
+    self._tensorboard_writer = tff.program.TensorBoardReleaseManager(
+        summary_dir)
 
   def on_epoch_end(self, epoch: int, logs=None):
-    self._writer.write_scalars(step=epoch, scalars=logs)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        self._tensorboard_writer.release(value=logs, key=epoch))
 
 
 def _make_output_dirs(root_output_dir, experiment_name):
@@ -167,11 +159,9 @@ def write_hparams(hparam_dict: Dict[str, Any], root_output_dir: str,
 
 
 def configure_default_managers(
-    root_output_dir: str,
-    experiment_name: str,
-    rounds_per_checkpoint: int,
-) -> Tuple[tff.simulation.FileCheckpointManager,
-           List[tff.simulation.MetricsManager]]:
+    root_output_dir: str, experiment_name: str
+) -> Tuple[tff.program.FileProgramStateManager,
+           List[tff.program.ReleaseManager]]:
   """Configures checkpoint and metrics managers for federated experiments.
 
   Args:
@@ -180,25 +170,25 @@ def configure_default_managers(
       subdirectories of this directory.
     experiment_name: A unique identifier for the current training simulation,
       used to create appropriate subdirectories of `root_output_dir`.
-    rounds_per_checkpoint: How often to write checkpoints.
 
   Returns:
-    A `tff.simulation.FileCheckpointManager`, and a list of
-    `tff.simulation.MetricsManager` instances.
+    A `tff.program.FileProgramStateManager`, and a list of
+    `tff.program.ReleaseManager` instances.
   """
   checkpoint_dir, results_dir, summary_dir = _make_output_dirs(
       root_output_dir, experiment_name)
 
-  checkpoint_manager = tff.simulation.FileCheckpointManager(
-      checkpoint_dir, step=rounds_per_checkpoint)
+  checkpoint_manager = tff.program.FileProgramStateManager(checkpoint_dir)
 
   csv_file = os.path.join(results_dir, 'experiment.metrics.csv')
 
-  metric_managers = [tff.simulation.CSVMetricsManager(csv_file)]
+  metric_managers = [
+      tff.program.LoggingReleaseManager(),
+      tff.program.CSVFileReleaseManager(
+          file_path=csv_file, key_fieldname='round_num'),
+      tff.program.TensorBoardReleaseManager(summary_dir=summary_dir)
+  ]
 
-  metric_managers.append(
-      MetricWriterManager(
-          metric_writers.create_default_writer(logdir=summary_dir)))
   logging.info('Writing...')
   logging.info('    checkpoints to: %s', checkpoint_dir)
   logging.info('    CSV metrics to: %s', csv_file)
@@ -238,10 +228,10 @@ def configure_default_callbacks(
       period=epochs_per_checkpoint,
       write_graph=False)
 
-  metric_callbacks = [AtomicCSVLoggerCallback(results_dir)]
-  metric_callbacks.append(
-      MetricWriterCallback(
-          metric_writers.create_default_writer(logdir=summary_dir)))
+  metric_callbacks = [
+      AtomicCSVLoggerCallback(results_dir),
+      MetricWriterCallback(summary_dir)
+  ]
   logging.info('Writing...')
   logging.info('    checkpoints to: %s', checkpoint_dir)
   logging.info('    CSV metrics to: %s', results_dir)

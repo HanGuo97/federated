@@ -37,10 +37,12 @@ def _configure_managers(
   results_dir = os.path.join(root_output_dir, 'results', experiment_name)
   csv_file = os.path.join(results_dir, 'experiment.metrics.csv')
   csv_manager = tff.program.CSVFileReleaseManager(
-      csv_file, save_mode=tff.program.CSVSaveMode.WRITE)
+      file_path=csv_file,
+      save_mode=tff.program.CSVSaveMode.WRITE,
+      key_fieldname='round_num')
 
   summary_dir = os.path.join(root_output_dir, 'logdir', experiment_name)
-  tensorboard_manager = tff.program.TensorboardReleaseManager(summary_dir)
+  tensorboard_manager = tff.program.TensorBoardReleaseManager(summary_dir)
 
   logging.info('Writing...')
   logging.info('    program state to: %s', program_state_dir)

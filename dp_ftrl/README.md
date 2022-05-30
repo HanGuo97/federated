@@ -7,7 +7,8 @@ private follow-the-regularized-leader) in federated learning. See "Practical and
 Private (Deep) Learning without Sampling or Shuffling"
 ([arXiv link](https://arxiv.org/abs/2103.00039)) for algorithmic details. The
 code in this folder is for the StackOverflow federated learning (FL) experiments
-in the paper.
+in the paper, and is intended to reproduce these experiments. As such, it is not
+under active development.
 
 NOTE: The implementation and experiments for centralized setting on image
 datasets can be found at
@@ -24,15 +25,14 @@ This folder is organized as following,
     of training by both epochs of clients shuffling and rounds of clients
     sampling.
 *   TFF iterative process builder `dp_fedavg` based on TFF
-    [`simple_fedavg` example](https://github.com/tensorflow/federated/tree/main/tensorflow_federated/python/examples/simple_fedavg).
+    [`simple_fedavg` example](https://github.com/tensorflow/federated/tree/main/tensorflow_federated/examples/simple_fedavg).
     Major changes: accept a customized class as server optimizers; add the
     option of clipping model delta before sending back to server for
     differential privacy.
 *   `optimizer_utils` defined several custimized optimizers including a simple
     reimplementation of SGD, differential private SGD with momentum (DP-SGDM)
     and differential private FTRL with momentum (DP-FTRLM).
-
-TODO(b/172867399): add privacy computation method.
+*   A python notebook describes the privacy accounting.
 
 ## Requirements
 
@@ -51,8 +51,8 @@ attrs~=19.3.0
 numpy~=1.19.2
 pandas~=0.24.2
 tensorflow-privacy~=0.6.0
-tensorflow-federated-nightly
-tf-nightly
+tensorflow-federated~=0.20.0
+tensorflow~=2.8.0
 ```
 
 <!-- mdformat on -->

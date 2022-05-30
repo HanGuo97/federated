@@ -1,5 +1,7 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
+package(default_visibility = ["//visibility:private"])
+
 licenses(["notice"])
 
 py_library(
@@ -53,25 +55,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [":data_utils"],
-)
-
-py_library(
-    name = "eval_utils",
-    srcs = ["eval_utils.py"],
-    srcs_version = "PY3",
-    deps = [":simulation_specs"],
-)
-
-py_test(
-    name = "eval_utils_test",
-    size = "small",
-    srcs = ["eval_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":eval_utils",
-        ":simulation_specs",
-    ],
 )
 
 py_library(

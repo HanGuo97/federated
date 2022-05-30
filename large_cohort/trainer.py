@@ -13,6 +13,7 @@
 # limitations under the License.
 """Runs federated training with large cohorts on a number of tasks."""
 
+import asyncio
 import collections
 import functools
 import os.path
@@ -32,6 +33,7 @@ from utils import task_utils
 from utils import training_utils
 
 with flag_utils.record_hparam_flags() as shared_flags:
+  flags.DEFINE_integer('total_rounds', 10, 'Number of total training rounds.')
   # Client configuration
   flags.DEFINE_integer(
       'train_epochs', 1,
@@ -62,12 +64,10 @@ with flag_utils.record_hparam_flags() as shared_flags:
   flags.DEFINE_string(
       'experiment_name', None, 'The name of this experiment. Will be append to '
       '--root_output_dir to separate experiment results.')
-  flags.mark_flag_as_required('experiment_name')
   flags.DEFINE_string('root_output_dir', '/tmp/large_cohort/',
                       'Root directory for writing experiment output.')
   flags.DEFINE_integer('rounds_per_checkpoint', 50,
                        'How often to checkpoint the global model.')
-  flags.DEFINE_integer('total_rounds', 10, 'Number of total training rounds.')
 
   # Training configuration
   flags.DEFINE_integer('clients_per_train_round', 10,
@@ -170,20 +170,19 @@ def _create_iterative_process(
   if FLAGS.iterative_process == 'FedOpt':
 
     client_optimizer_fn = flag_utils.create_optimizer_fn_from_flags('client')
-    return tff.learning.build_federated_averaging_process(
+    return tff.learning.algorithms.build_weighted_fed_avg(
         model_fn=model_fn,
         client_optimizer_fn=client_optimizer_fn,
         server_optimizer_fn=server_optimizer_fn,
         client_weighting=client_weighting,
-        model_update_aggregation_factory=model_update_aggregation_factory)
+        model_aggregator=model_update_aggregation_factory)
 
   elif FLAGS.iterative_process == 'FedSGD':
 
-    return tff.learning.build_federated_sgd_process(
+    return tff.learning.algorithms.build_fed_sgd(
         model_fn=model_fn,
         server_optimizer_fn=server_optimizer_fn,
-        client_weighting=client_weighting,
-        model_update_aggregation_factory=model_update_aggregation_factory)  # pytype: disable=bad-return-type  # gen-stub-imports
+        model_aggregator=model_update_aggregation_factory)  # pytype: disable=bad-return-type  # gen-stub-imports
 
 
 def main(argv):
@@ -288,6 +287,14 @@ def main(argv):
       rounds_per_saving_program_state=FLAGS.rounds_per_checkpoint,
       metrics_managers=metrics_managers)
 
+  loop = asyncio.get_event_loop()
+
+  async def write_final_metrics(metrics, round_num):
+    await asyncio.gather(*[
+        manager.release(value=metrics, key=round_num)
+        for manager in metrics_managers
+    ])
+
   # Perform post-training evaluation
   full_train_dataset = task.datasets.eval_preprocess_fn(
       train_data.create_tf_dataset_from_all_clients())
@@ -307,8 +314,8 @@ def main(argv):
     post_training_metrics['validation'] = federated_evaluation_fn(
         state.model, [full_validation_dataset])
 
-  for metrics_manager in metrics_managers:
-    metrics_manager.release(post_training_metrics, FLAGS.total_rounds + 1)
+  loop.run_until_complete(
+      write_final_metrics(post_training_metrics, FLAGS.total_rounds + 1))
 
 
 if __name__ == '__main__':

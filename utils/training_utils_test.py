@@ -55,9 +55,9 @@ class CreateManagersTest(parameterized.TestCase):
     self.assertIsInstance(release_managers[1],
                           tff.program.CSVFileReleaseManager)
     self.assertIsInstance(release_managers[2],
-                          tff.program.TensorboardReleaseManager)
+                          tff.program.TensorBoardReleaseManager)
 
-  @mock.patch.object(tff.program, 'TensorboardReleaseManager')
+  @mock.patch.object(tff.program, 'TensorBoardReleaseManager')
   @mock.patch.object(tff.program, 'CSVFileReleaseManager')
   @mock.patch.object(tff.program, 'LoggingReleaseManager')
   @mock.patch.object(tff.program, 'FileProgramStateManager')
@@ -82,27 +82,15 @@ class CreateManagersTest(parameterized.TestCase):
     csv_file_path = os.path.join(root_dir, 'results', experiment_name,
                                  'experiment.metrics.csv')
     mock_csv_file_release_manager.assert_called_once_with(
-        file_path=csv_file_path, save_mode=csv_save_mode)
+        file_path=csv_file_path,
+        save_mode=csv_save_mode,
+        key_fieldname='round_num')
     summary_dir = os.path.join(root_dir, 'logdir', experiment_name)
     mock_tensorboard_release_manager.assert_called_once_with(
         summary_dir=summary_dir)
 
 
 class TrainingUtilsTest(tf.test.TestCase):
-
-  def test_checkpoint_manager_saves_to_correct_dir(self):
-    root_output_dir = self.get_temp_dir()
-    experiment_name = 'test'
-    checkpoint_manager, _ = training_utils.configure_managers(
-        root_output_dir, experiment_name, rounds_per_checkpoint=1)
-    self.assertIsInstance(checkpoint_manager,
-                          tff.simulation.FileCheckpointManager)
-
-    checkpoint_path = os.path.join(root_output_dir, 'checkpoints',
-                                   experiment_name)
-    test_state = create_scalar_metrics()
-    checkpoint_manager.save_checkpoint(test_state, 1)
-    self.assertCountEqual(tf.io.gfile.listdir(checkpoint_path), ['ckpt_1'])
 
   def test_write_hparams_to_csv_writes_to_correct_file(self):
     root_output_dir = self.get_temp_dir()
@@ -142,7 +130,7 @@ class TrainingUtilsTest(tf.test.TestCase):
     model = task.model_fn()
     model_weights = tff.learning.ModelWeights.from_model(model)
     validation_metrics = validation_fn(model_weights, round_num=1)
-    self.assertEqual(validation_metrics['stat']['num_examples'], 3)
+    self.assertEqual(validation_metrics['eval']['num_examples'], 3)
 
   def test_create_test_fn_is_compatible_with_model_weights(self):
     task = create_task()

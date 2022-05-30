@@ -13,6 +13,7 @@
 # limitations under the License.
 """Training loops for DP-FTRL."""
 
+import asyncio
 import os.path
 import pprint
 import random
@@ -43,10 +44,11 @@ def _setup_outputs(root_output_dir: str, experiment_name: str,
 
   results_dir = os.path.join(root_output_dir, 'results', experiment_name)
   csv_file = os.path.join(results_dir, 'experiment.metrics.csv')
-  metrics_mngr = tff.program.CSVFileReleaseManager(csv_file)
+  metrics_mngr = tff.program.CSVFileReleaseManager(
+      file_path=csv_file, key_fieldname='round_num')
 
   summary_logdir = os.path.join(root_output_dir, 'logdir', experiment_name)
-  tensorboard_mngr = tff.program.TensorboardReleaseManager(summary_logdir)
+  tensorboard_mngr = tff.program.TensorBoardReleaseManager(summary_logdir)
 
   if hparam_dict:
     summary_writer = tf.summary.create_file_writer(summary_logdir)
@@ -66,14 +68,16 @@ def _setup_outputs(root_output_dir: str, experiment_name: str,
 
 def _write_metrics(metrics_mngrs, metrics, round_num):
   """Atomic metrics writer which inlines logic from MetricsHook class."""
+  loop = asyncio.get_event_loop()
+
   if not isinstance(metrics, dict):
     raise TypeError('metrics should be type `dict`.')
   if not isinstance(round_num, int):
     raise TypeError('round_num should be type `int`.')
   logging.info('Metrics at round {:d}:\n{!s}'.format(round_num,
                                                      pprint.pformat(metrics)))
-  for metrics_mngr in metrics_mngrs:
-    metrics_mngr.release(metrics, round_num)
+  loop.run_until_complete(
+      asyncio.gather(*[m.release(metrics, round_num) for m in metrics_mngrs]))
 
 
 def run(
@@ -143,6 +147,8 @@ def run(
   Returns:
     The final `state` of the iterative process after training.
   """
+  loop = asyncio.get_event_loop()
+
   if not isinstance(iterative_process, tff.templates.IterativeProcess):
     raise TypeError('iterative_process should be type '
                     '`tff.templates.IterativeProcess`.')
@@ -163,7 +169,8 @@ def run(
                                                      hparam_dict)
 
   logging.info('Asking checkpoint manager to load checkpoint.')
-  state, round_num = program_state_mngr.load_latest(initial_state)
+  state, round_num = loop.run_until_complete(
+      program_state_mngr.load_latest(initial_state))
 
   # TODO(b/172867399): we disable restarting from checkpoint when shuffling
   # client IDs by epochs. Non-trivial amount of change has to be made to make
@@ -204,7 +211,7 @@ def run(
         round_num == total_rounds - 1):
       save_checkpoint_start_time = time.time()
       try:
-        program_state_mngr.save(state, round_num)
+        loop.run_until_complete(program_state_mngr.save(state, round_num))
       except Exception:  # pylint: disable=broad-except
         logging.info('Checkpoint saving exception: %s', Exception)
       train_metrics['save_checkpoint_secs'] = (

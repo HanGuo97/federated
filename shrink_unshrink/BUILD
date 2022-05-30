@@ -1,5 +1,7 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
+package(default_visibility = ["//visibility:private"])
+
 licenses(["notice"])
 
 py_binary(
@@ -72,7 +74,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "nokokoro",
         "requires-net:external",
     ],
     deps = [":models"],
@@ -95,7 +96,6 @@ py_test(
     srcs = ["simple_fedavg_tf_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["nokokoro"],
     deps = [
         ":models",
         ":simple_fedavg_tf",
@@ -105,11 +105,11 @@ py_test(
 
 py_test(
     name = "shrink_unshrink_tff_test",
+    size = "large",
     srcs = ["shrink_unshrink_tff_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "nokokoro",
         "requires-net:external",
     ],
     deps = [

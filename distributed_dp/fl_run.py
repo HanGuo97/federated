@@ -13,6 +13,7 @@
 # limitations under the License.
 """Runs federated training tasks."""
 
+import asyncio
 import functools
 import math
 import os
@@ -89,7 +90,7 @@ with utils_impl.record_hparam_flags() as dp_flags:
   flags.DEFINE_float('delta', None, 'Delta for the DP mechanism. ')
   flags.DEFINE_float('l2_norm_clip', 2.0, 'Initial L2 norm clip.')
 
-  dp_mechanisms = ['gaussian', 'ddgauss']
+  dp_mechanisms = ['gaussian', 'ddgauss', 'dskellam']
   flags.DEFINE_enum('dp_mechanism', 'ddgauss', dp_mechanisms,
                     'Which DP mechanism to use.')
 
@@ -282,9 +283,17 @@ def main(argv):
       rounds_per_saving_program_state=FLAGS.rounds_per_checkpoint,
       metrics_managers=metrics_managers)
 
+  loop = asyncio.get_event_loop()
+
+  async def write_final_metrics(metrics, round_num):
+    await asyncio.gather(*[
+        manager.release(value=metrics, key=round_num)
+        for manager in metrics_managers
+    ])
+
   test_metrics = federated_eval(state.model, [test_data])
-  for metrics_manager in metrics_managers:
-    metrics_manager.release(test_metrics, FLAGS.total_rounds + 1)
+  loop.run_until_complete(
+      write_final_metrics(test_metrics, FLAGS.total_rounds + 1))
 
 if __name__ == '__main__':
   app.run(main)
